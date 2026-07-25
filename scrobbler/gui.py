@@ -269,7 +269,9 @@ class ScrobblerGUI:
 
         def worker() -> None:
             try:
-                self.qm.clear_all()
+                self.qm.clear_pending()
+                self.qm.clear_failed()
+                self.qm.clear_success()
                 files = scan_paths([path])
                 count = 0
                 for fp in files:
@@ -359,6 +361,14 @@ class ScrobblerGUI:
 
                     if ok_ids:
                         self.qm.remove_ids(ok_ids)
+                        # Add session-level entries to success tab
+                        for oid in ok_ids:
+                            track = next((t for t in batch if t.get("id") == oid), None)
+                            if track:
+                                self._invoke(lambda t=track: self.success_tree.insert(
+                                    "", tk.END,
+                                    values=(t.get("artist",""), t.get("track",""), t.get("album","")),
+                                ))
                     if fail_ids:
                         for rid, reason in zip(fail_ids, fail_reasons):
                             self.qm.mark_failed([rid], str(reason))
