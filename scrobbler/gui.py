@@ -120,38 +120,46 @@ class ScrobblerGUI:
         return self._show_setup()
 
     def _show_setup(self) -> Optional[LastFMClient]:
-        """Open browser for Last.fm auth, collect token, exchange for session key."""
-        import webbrowser
-
+        """Simple session key entry dialog."""
         result = {"client": None}
 
         dialog = tk.Toplevel(self.root)
-        dialog.title("Last.fm — Authorize Scrobbler")
-        dialog.geometry("450x200")
+        dialog.title("Last.fm — Enter Session Key")
+        dialog.geometry("480x200")
         dialog.resizable(False, False)
         dialog.transient(self.root)
         dialog.grab_set()
 
         ttk.Label(
             dialog,
-            text="Log in to Last.fm to authorize the scrobbler.\n"
-                 "A browser window will open.",
-            wraplength=410,
+            text="Paste your Last.fm session key to get started.\n\n"
+                 "How to get one:\n"
+                 "  • If you're migrating from another PC, copy it from\n"
+                 "    %APPDATA%\\lastfm-scrobbler\\config.json\n"
+                 "  • Or click \"Open Last.fm\" below to authorize via browser",
+            wraplength=440,
+            justify=tk.LEFT,
         ).pack(padx=20, pady=(15, 10))
 
-        ttk.Label(dialog, text="Auth Token:").pack(padx=20, anchor=tk.W)
-        token_var = tk.StringVar()
-        ttk.Entry(dialog, textvariable=token_var, width=50).pack(padx=20, fill=tk.X)
+        entry_frame = ttk.Frame(dialog)
+        entry_frame.pack(fill=tk.X, padx=20)
+        ttk.Label(entry_frame, text="Session Key:").pack(side=tk.LEFT)
+        sk_var = tk.StringVar()
+        ttk.Entry(entry_frame, textvariable=sk_var, show="*", width=40).pack(
+            side=tk.LEFT, padx=5, fill=tk.X, expand=True,
+        )
 
-        ttk.Label(
-            dialog,
-            text="After granting access, copy the token from the URL and paste it above.",
-            wraplength=410,
-            foreground="gray",
-        ).pack(padx=20, pady=(5, 0))
+        def _save() -> None:
+            sk = sk_var.get().strip()
+            if not sk:
+                return
+            set_session_key(sk)
+            result["client"] = LastFMClient(API_KEY, API_SECRET, session_key=sk)
+            dialog.destroy()
 
-        def _open_browser() -> None:
-            # Get auth token first, then open browser with it
+        def _browser_auth() -> None:
+            """Fallback: browser-based auth."""
+            import webbrowser
             try:
                 client = LastFMClient(API_KEY, API_SECRET)
                 token = client.get_token()
@@ -159,61 +167,24 @@ class ScrobblerGUI:
                     f"https://www.last.fm/api/auth/?api_key={API_KEY}&token={token}"
                 )
             except Exception as e:
-                messagebox.showerror("Error", str(e), parent=dialog)
-
-        def _exchange() -> None:
-            token = token_var.get().strip()
-            if not token:
-                return
-            try:
-                client = LastFMClient(API_KEY, API_SECRET)
-                resp = client.get_session(token)
-                sk = resp["session"]["key"]
-                set_session_key(sk)
-                result["client"] = LastFMClient(API_KEY, API_SECRET, session_key=sk)
-                dialog.destroy()
-            except Exception as e:
-                messagebox.showerror("Auth Error", str(e), parent=dialog)
+                messagebox.showerror(
+                    "Auth Error",
+                    f"Could not contact Last.fm: {e}\n\n"
+                    "Use the session key method instead.",
+                    parent=dialog,
+                )
 
         btn_frame = ttk.Frame(dialog)
         btn_frame.pack(pady=15)
-        ttk.Button(btn_frame, text="Open Last.fm", command=_open_browser).pack(
+        ttk.Button(btn_frame, text="Save", command=_save).pack(
             side=tk.LEFT, padx=5,
         )
-        ttk.Button(btn_frame, text="Authorize", command=_exchange).pack(
+        ttk.Button(btn_frame, text="Open Last.fm (browser auth)", command=_browser_auth).pack(
             side=tk.LEFT, padx=5,
         )
         ttk.Button(btn_frame, text="Cancel", command=dialog.destroy).pack(
             side=tk.LEFT, padx=5,
         )
-
-        # ── Fallback: manual session key entry ────────────────────────────────
-        ttk.Separator(dialog, orient=tk.HORIZONTAL).pack(fill=tk.X, padx=20, pady=5)
-
-        manual_frame = ttk.Frame(dialog)
-        manual_frame.pack(fill=tk.X, padx=20, pady=(0, 10))
-        ttk.Label(manual_frame, text="Or paste existing session key:").pack(
-            side=tk.LEFT,
-        )
-        manual_var = tk.StringVar()
-        ttk.Entry(manual_frame, textvariable=manual_var, show="*", width=35).pack(
-            side=tk.LEFT, padx=5, fill=tk.X, expand=True,
-        )
-
-        def _save_manual() -> None:
-            sk = manual_var.get().strip()
-            if not sk:
-                return
-            set_session_key(sk)
-            result["client"] = LastFMClient(API_KEY, API_SECRET, session_key=sk)
-            dialog.destroy()
-
-        ttk.Button(manual_frame, text="Save", command=_save_manual).pack(
-            side=tk.LEFT, padx=2,
-        )
-
-        # Open browser automatically on first appearance
-        dialog.after(500, _open_browser)
 
         self.root.wait_window(dialog)
         if result["client"]:
