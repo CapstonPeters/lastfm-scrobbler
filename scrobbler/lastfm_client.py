@@ -56,11 +56,35 @@ class LastFMClient:
         return resp["token"]
 
     def get_session(self, token: str) -> dict:
-        """Exchange a token for a session key."""
+        """Exchange a token for a session key (web auth flow)."""
         params = {
             "method": "auth.getSession",
             "api_key": self.api_key,
             "token": token,
+        }
+        params["api_sig"] = self._sign(params)
+        return self._post(params)
+
+    def get_mobile_session(self, username: str, password: str) -> dict:
+        """Get a session key via username+password (mobile auth flow).
+
+        Password should be the plain-text Last.fm password.
+        The API expects: api_sig = md5(api_key + method + md5(password) + username + api_secret)
+        where the inner md5 is of username + md5(password).
+        No token or browser interaction needed.
+        Session keys from this method are long-lived and ideal for desktop apps.
+        """
+        # Per Last.fm mobile auth spec
+        password_hash = hashlib.md5(password.encode("utf-8")).hexdigest()
+        auth_token = hashlib.md5(
+            (username.lower() + password_hash).encode("utf-8")
+        ).hexdigest()
+
+        params = {
+            "method": "auth.getMobileSession",
+            "api_key": self.api_key,
+            "username": username,
+            "authToken": auth_token,
         }
         params["api_sig"] = self._sign(params)
         return self._post(params)
