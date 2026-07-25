@@ -24,6 +24,7 @@ class ScrobblerGUI:
         self.scan_running = False
         self.scrobble_running = False
         self._success_tracks: list = []
+        self._unchecked: set = set()  # (artist, track) tuples deselected by user
 
         self._build_ui()
         self._refresh_tables()
@@ -367,13 +368,12 @@ class ScrobblerGUI:
 
                     if ok_ids:
                         self.qm.remove_ids(ok_ids)
-                        # Add session-level entries to success tab
+                        # Add to in-memory success list for the tab
                         for oid in ok_ids:
                             track = next((t for t in batch if t.get("id") == oid), None)
                             if track:
-                                self._invoke(lambda t=track: self.success_tree.insert(
-                                    "", tk.END,
-                                    values=(t.get("artist",""), t.get("track",""), t.get("album","")),
+                                self._invoke(lambda t=track: self._success_tracks.append(
+                                    (t.get("artist",""), t.get("track",""), t.get("album",""))
                                 ))
                     if fail_ids:
                         for rid, reason in zip(fail_ids, fail_reasons):
@@ -459,10 +459,20 @@ class ScrobblerGUI:
     # ── Helpers ─────────────────────────────────────────────────────────────
 
     def _refresh_tables(self) -> None:
+        """Redraw all trees, preserving checkbox state."""
+        # Save checkbox states before clearing
+        saved_checks: dict[str, bool] = {}
+        for tree in [self.queue_tree, self.failed_tree]:
+            for item in tree.get_children():
+                vals = tree.item(item, "values")
+                key = f"{vals[0]}|{vals[1]}" if len(vals) >= 2 else ""
+                saved_checks[key] = tree.set(item, "select") == "True"
+
         for tree in [self.queue_tree, self.success_tree, self.failed_tree]:
             for item in tree.get_children():
                 tree.delete(item)
 
+        # Repopulate pending + failed
         with self.qm._conn() as conn:
             for row in conn.execute(
                 "SELECT artist, track, album, status FROM scrobbles ORDER BY id"
@@ -472,17 +482,17 @@ class ScrobblerGUI:
                     "FAILED": self.failed_tree,
                 }.get(row["status"])
                 if tree:
-                    tree.insert(
-                        "", tk.END,
-                        values=(row["artist"], row["track"], row["album"]),
-                    )
+                    item = tree.insert("", tk.END, values=(row["artist"], row["track"], row["album"]))
+                    key = f"{row['artist']}|{row['track']}"
+                    # Restore checkbox or default to checked
+                    check_state = saved_checks.get(key, "True")
+                    tree.set(item, "select", check_state)
 
-        # Show in-memory success list
+        # Repopulate success tab from in-memory list
         for artist, track, album in self._success_tracks:
-            self.success_tree.insert(
-                "", tk.END,
-                values=(artist, track, album),
-            )
+            self.success_tree.insert("", tk.END, values=(artist, track, album))
+
+        # ── Status bar ───────────────────────────────────────────────────
 
     def _invoke(self, fn) -> None:
         """Thread-safe UI update."""
