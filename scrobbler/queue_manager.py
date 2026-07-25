@@ -157,3 +157,10 @@ class QueueManager:
                 "UPDATE scrobbles SET status='PENDING', error_msg='' "
                 "WHERE status='FAILED'")
             return cur.rowcount
+
+    def clear_all(self) -> int:
+        """Delete all tracks from the queue."""
+        with self._conn() as conn:
+            cur = conn.execute("DELETE FROM scrobbles")
+            conn.execute("DELETE FROM scrobble_log")
+            return cur.rowcount

@@ -237,6 +237,7 @@ class ScrobblerGUI:
 
         def worker() -> None:
             try:
+                self.qm.clear_all()
                 files = scan_paths([path])
                 count = 0
                 for fp in files:
