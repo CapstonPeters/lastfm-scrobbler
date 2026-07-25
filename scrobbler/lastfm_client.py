@@ -12,11 +12,11 @@ API_BASE = "https://ws.audioscrobbler.com/2.0/"
 MAX_BATCH = 50
 DELAY_BETWEEN_BATCHES = 2.0  # seconds
 
-# Retry on 5xx and 429 with exponential backoff
+# Retry on 403 (IP block), 429 (rate limit), and 5xx with exponential backoff
 retry_strategy = Retry(
-    total=3,
-    backoff_factor=2.0,
-    status_forcelist=[429, 500, 502, 503, 504],
+    total=4,
+    backoff_factor=5.0,
+    status_forcelist=[403, 429, 500, 502, 503, 504],
     allowed_methods=["POST"],
 )
 _session = requests.Session()

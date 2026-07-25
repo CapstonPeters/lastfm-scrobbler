@@ -398,6 +398,9 @@ class ScrobblerGUI:
             except Exception as e:
                 # Write log to file on error
                 err = str(e)
+                if "403" in err:
+                    err = "IP blocked by Last.fm — wait a few minutes or use a different network"
+                log_msg(f"ERROR: {err}")
                 try:
                     log_path = self.qm.db_path.replace(".db", "_scrobble.log")
                     with open(log_path, "w") as lf:
