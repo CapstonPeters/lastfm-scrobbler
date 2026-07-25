@@ -295,9 +295,18 @@ class ScrobblerGUI:
             ok_total = 0
             fail_total = 0
             try:
+                import datetime
+                log = []
+                def log_msg(msg):
+                    log.append(f"[{datetime.datetime.now().strftime('%H:%M:%S')}] {msg}")
+
+                log_msg(f"Starting scrobble: {len(pending)} tracks, dry_run={dry}")
                 for i in range(0, len(pending), MAX_BATCH):
                     batch = pending[i : i + MAX_BATCH]
+                    log_msg(f"Batch {i//MAX_BATCH+1}/{((len(pending)-1)//MAX_BATCH)+1}: {len(batch)} tracks")
+
                     results = self.client.scrobble_batch(batch)
+                    log_msg(f"Results: {len(results)} entries")
 
                     ok_ids = []
                     fail_ids = []
@@ -310,12 +319,17 @@ class ScrobblerGUI:
                             fail_ids.append(r["id"])
                             fail_reasons.append(r.get("error") or "unknown")
                             fail_total += 1
+                            log_msg(f"  FAILED id={r['id']}: {r.get('error')}")
+
+                    log_msg(f"  {len(ok_ids)} ok, {len(fail_ids)} failed")
 
                     if ok_ids:
                         self.qm.mark_success(ok_ids)
+                        log_msg(f"  Marked {len(ok_ids)} as SUCCESS")
                     if fail_ids:
                         for rid, reason in zip(fail_ids, fail_reasons):
                             self.qm.mark_failed([rid], str(reason))
+                        log_msg(f"  Marked {len(fail_ids)} as FAILED")
 
                     self.qm.log_scrobble(len(batch))
 
@@ -339,10 +353,24 @@ class ScrobblerGUI:
                     exported = export_failed(self.qm)
                     final += f" | {exported} saved to failed_scrobbles.json"
 
+                # Write log to file for debugging
+                log_path = self.qm.db_path.replace(".db", "_scrobble.log")
+                with open(log_path, "w") as lf:
+                    lf.write("\n".join(log))
+                if ok_total == 0 and fail_total == 0:
+                    final += f" | Log: {log_path}"
+
                 self._invoke(lambda f=final: self.status_var.set(f))
 
             except Exception as e:
-                self._invoke(lambda: self.status_var.set(f"Error: {e}"))
+                # Write log to file on error
+                try:
+                    log_path = self.qm.db_path.replace(".db", "_scrobble.log")
+                    with open(log_path, "w") as lf:
+                        lf.write("\n".join(log))
+                    self._invoke(lambda: self.status_var.set(f"Error: {e} | Log: {log_path}"))
+                except:
+                    self._invoke(lambda: self.status_var.set(f"Error: {e}"))
             finally:
                 self._invoke(self._scrobble_done)
 
