@@ -33,6 +33,16 @@ class LastFMClient:
             f"?api_key={api_key}"
         )
 
+    def get_token(self) -> str:
+        """Get a request token for web auth flow."""
+        params = {
+            "method": "auth.getToken",
+            "api_key": self.api_key,
+        }
+        params["api_sig"] = self._sign(params)
+        resp = self._post(params)
+        return resp["token"]
+
     def get_session(self, token: str) -> dict:
         """Exchange a token for a session key."""
         params = {

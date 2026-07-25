@@ -151,7 +151,15 @@ class ScrobblerGUI:
         ).pack(padx=20, pady=(5, 0))
 
         def _open_browser() -> None:
-            webbrowser.open(f"https://www.last.fm/api/auth/?api_key={API_KEY}")
+            # Get auth token first, then open browser with it
+            try:
+                client = LastFMClient(API_KEY, API_SECRET)
+                token = client.get_token()
+                webbrowser.open(
+                    f"https://www.last.fm/api/auth/?api_key={API_KEY}&token={token}"
+                )
+            except Exception as e:
+                messagebox.showerror("Error", str(e), parent=dialog)
 
         def _exchange() -> None:
             token = token_var.get().strip()
