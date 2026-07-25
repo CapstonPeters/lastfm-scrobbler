@@ -252,7 +252,8 @@ class ScrobblerGUI:
                     f"Scanned {count} tracks from {len(files)} files"
                 ))
             except Exception as e:
-                self._invoke(lambda: self.status_var.set(f"Scan error: {e}"))
+                err = str(e)
+                self._invoke(lambda: self.status_var.set(f"Scan error: {err}"))
             finally:
                 self._invoke(self._scan_done)
 
@@ -368,13 +369,14 @@ class ScrobblerGUI:
 
             except Exception as e:
                 # Write log to file on error
+                err = str(e)
                 try:
                     log_path = self.qm.db_path.replace(".db", "_scrobble.log")
                     with open(log_path, "w") as lf:
                         lf.write("\n".join(log))
-                    self._invoke(lambda: self.status_var.set(f"Error: {e} | Log: {log_path}"))
+                    self._invoke(lambda: self.status_var.set(f"Error: {err} | Log: {log_path}"))
                 except:
-                    self._invoke(lambda: self.status_var.set(f"Error: {e}"))
+                    self._invoke(lambda: self.status_var.set(f"Error: {err}"))
             finally:
                 self._invoke(self._scrobble_done)
 
