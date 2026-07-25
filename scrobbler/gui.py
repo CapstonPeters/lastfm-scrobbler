@@ -187,6 +187,31 @@ class ScrobblerGUI:
             side=tk.LEFT, padx=5,
         )
 
+        # ── Fallback: manual session key entry ────────────────────────────────
+        ttk.Separator(dialog, orient=tk.HORIZONTAL).pack(fill=tk.X, padx=20, pady=5)
+
+        manual_frame = ttk.Frame(dialog)
+        manual_frame.pack(fill=tk.X, padx=20, pady=(0, 10))
+        ttk.Label(manual_frame, text="Or paste existing session key:").pack(
+            side=tk.LEFT,
+        )
+        manual_var = tk.StringVar()
+        ttk.Entry(manual_frame, textvariable=manual_var, show="*", width=35).pack(
+            side=tk.LEFT, padx=5, fill=tk.X, expand=True,
+        )
+
+        def _save_manual() -> None:
+            sk = manual_var.get().strip()
+            if not sk:
+                return
+            set_session_key(sk)
+            result["client"] = LastFMClient(API_KEY, API_SECRET, session_key=sk)
+            dialog.destroy()
+
+        ttk.Button(manual_frame, text="Save", command=_save_manual).pack(
+            side=tk.LEFT, padx=2,
+        )
+
         # Open browser automatically on first appearance
         dialog.after(500, _open_browser)
 
