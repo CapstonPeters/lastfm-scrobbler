@@ -5,10 +5,22 @@ import time
 from typing import List, Optional, Tuple
 
 import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
 API_BASE = "https://ws.audioscrobbler.com/2.0/"
 MAX_BATCH = 50
 DELAY_BETWEEN_BATCHES = 2.0  # seconds
+
+# Retry on 5xx and 429 with exponential backoff
+retry_strategy = Retry(
+    total=3,
+    backoff_factor=2.0,
+    status_forcelist=[429, 500, 502, 503, 504],
+    allowed_methods=["POST"],
+)
+_session = requests.Session()
+_session.mount("https://", HTTPAdapter(max_retries=retry_strategy))
 
 
 class LastFMClient:
@@ -145,7 +157,7 @@ class LastFMClient:
 
     def _post(self, params: dict) -> dict:
         params["format"] = "json"
-        resp = requests.post(API_BASE, data=params, timeout=30)
+        resp = _session.post(API_BASE, data=params, timeout=30)
         resp.raise_for_status()
         body = resp.json()
         if "error" in body:

@@ -92,8 +92,18 @@ class ScrobblerGUI:
         self.retry_btn.pack(side=tk.LEFT, padx=2)
 
         ttk.Button(
-            bottom, text="Clear All", command=self._clear
+            bottom, text="Clear Queue", command=lambda: self._clear_status("PENDING")
         ).pack(side=tk.LEFT, padx=2)
+
+        ttk.Button(
+            bottom, text="Clear Failed", command=lambda: self._clear_status("FAILED")
+        ).pack(side=tk.LEFT, padx=2)
+
+        ttk.Button(
+            bottom, text="Clear Success", command=lambda: self._clear_status("SUCCESS")
+        ).pack(side=tk.LEFT, padx=2)
+
+        ttk.Separator(bottom, orient=tk.VERTICAL).pack(side=tk.LEFT, fill=tk.Y, padx=5)
 
         ttk.Button(
             bottom, text="⚙ Settings", command=self._show_setup
@@ -293,7 +303,8 @@ class ScrobblerGUI:
         self.progress.start(10)
         total = len(pending)
         self.status_var.set(
-            f"{'[DRY RUN] ' if dry else ''}Scrobbling {total} tracks…"
+            f"{'[DRY RUN] ' if dry else ''}Scrobbling {total} tracks… "
+            f"({self.qm.daily_remaining()} left today)"
         )
 
         def worker() -> None:
@@ -329,8 +340,7 @@ class ScrobblerGUI:
                     log_msg(f"  {len(ok_ids)} ok, {len(fail_ids)} failed")
 
                     if ok_ids:
-                        self.qm.mark_success(ok_ids)
-                        log_msg(f"  Marked {len(ok_ids)} as SUCCESS")
+                        self.qm.remove_ids(ok_ids)
                     if fail_ids:
                         for rid, reason in zip(fail_ids, fail_reasons):
                             self.qm.mark_failed([rid], str(reason))
@@ -396,14 +406,17 @@ class ScrobblerGUI:
             self.status_var.set("No failed tracks to retry.")
         self._refresh_tables()
 
-    def _clear(self) -> None:
+    def _clear_status(self, status: str) -> None:
+        labels = {"PENDING": "queued tracks", "FAILED": "failed tracks", "SUCCESS": "successful tracks"}
+        label = labels.get(status, f"{status} tracks")
         ok = messagebox.askyesno(
-            "Clear All Tracks",
-            "Remove ALL tracks (pending, success, and failed)?",
+            f"Clear {label.title()}",
+            f"Remove all {label}?",
         )
         if ok:
-            self.qm.clear_all()
-            self.status_var.set("All tracks cleared.")
+            method = {status: getattr(self.qm, f"clear_{status.lower()}") for status in labels}
+            count = method[status]()
+            self.status_var.set(f"Cleared {count} {label}.")
             self._refresh_tables()
 
     # ── Helpers ─────────────────────────────────────────────────────────────

@@ -158,8 +158,48 @@ class QueueManager:
                 "WHERE status='FAILED'")
             return cur.rowcount
 
+    # ── clear by status ──────────────────────────────────────────────────────
+
     def clear_all(self) -> int:
         """Delete all tracks from the queue."""
         with self._conn() as conn:
             cur = conn.execute("DELETE FROM scrobbles")
             return cur.rowcount
+
+    def clear_pending(self) -> int:
+        """Delete only pending (queued) tracks."""
+        with self._conn() as conn:
+            cur = conn.execute("DELETE FROM scrobbles WHERE status='PENDING'")
+            return cur.rowcount
+
+    def clear_failed(self) -> int:
+        """Delete only failed tracks."""
+        with self._conn() as conn:
+            cur = conn.execute("DELETE FROM scrobbles WHERE status='FAILED'")
+            return cur.rowcount
+
+    def clear_success(self) -> int:
+        """Delete only successful tracks."""
+        with self._conn() as conn:
+            cur = conn.execute("DELETE FROM scrobbles WHERE status='SUCCESS'")
+            return cur.rowcount
+
+    def remove_ids(self, ids: List[int]) -> int:
+        """Delete specific tracks by ID (used after successful scrobble)."""
+        with self._conn() as conn:
+            cur = conn.executemany(
+                "DELETE FROM scrobbles WHERE id=?",
+                [(i,) for i in ids],
+            )
+            return cur.rowcount
+
+    # ── daily limit tracking ─────────────────────────────────────────────────
+
+    def daily_scrobbles_today(self) -> int:
+        """Count scrobbles logged in the last 24 hours."""
+        return self.scrobbles_in_window(86400)
+
+    def daily_remaining(self, limit: int = 3000) -> int:
+        """How many more scrobbles allowed today."""
+        used = self.daily_scrobbles_today()
+        return max(0, limit - used)
