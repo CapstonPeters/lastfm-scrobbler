@@ -23,6 +23,7 @@ class ScrobblerGUI:
         self.client: Optional[LastFMClient] = None
         self.scan_running = False
         self.scrobble_running = False
+        self._success_tracks: list = []
 
         self._build_ui()
         self._refresh_tables()
