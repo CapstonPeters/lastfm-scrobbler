@@ -12,6 +12,7 @@ from .metadata import extract
 from .queue_manager import QueueManager
 from .lastfm_client import LastFMClient, MAX_BATCH, DELAY_BETWEEN_BATCHES
 from .dead_letter import export_failed
+from .config import get_credentials, set_credentials, has_credentials
 
 
 class ScrobblerGUI:
@@ -89,6 +90,10 @@ class ScrobblerGUI:
         )
         self.retry_btn.pack(side=tk.LEFT, padx=2)
 
+        ttk.Button(
+            bottom, text="⚙ Settings", command=self._show_setup
+        ).pack(side=tk.LEFT, padx=2)
+
         self.status_var = tk.StringVar(value="Ready")
         ttk.Label(bottom, textvariable=self.status_var).pack(
             side=tk.RIGHT, padx=5
@@ -100,17 +105,145 @@ class ScrobblerGUI:
         )
         self.progress.pack(side=tk.RIGHT, padx=5)
 
-        # ── Auth setup hint ─────────────────────────────────────────────────
-        api_key = os.environ.get("LASTFM_API_KEY", "")
-        api_secret = os.environ.get("LASTFM_API_SECRET", "")
-        sk = os.environ.get("LASTFM_SK", "")
+        # ── Auth: load from config, or show setup on first run ──────────────────
+        self.client = self._init_auth()
 
+    def _init_auth(self) -> Optional[LastFMClient]:
+        """Load credentials from config; show setup dialog if missing."""
+        api_key, api_secret, sk = get_credentials()
         if api_key and api_secret and sk:
-            self.client = LastFMClient(api_key, api_secret, session_key=sk)
-        else:
-            self.status_var.set(
-                "Set LASTFM_API_KEY, LASTFM_API_SECRET, and LASTFM_SK env vars"
+            self.status_var.set("Authenticated ✓")
+            return LastFMClient(api_key, api_secret, session_key=sk)
+
+        # First run — show setup dialog
+        self.status_var.set("Not authenticated — please configure Last.fm credentials")
+        return self._show_setup()
+
+    def _show_setup(self) -> Optional[LastFMClient]:
+        """Show setup dialog for Last.fm credentials."""
+        dialog = tk.Toplevel(self.root)
+        dialog.title("Last.fm Setup")
+        dialog.geometry("500x320")
+        dialog.resizable(False, False)
+        dialog.transient(self.root)
+        dialog.grab_set()
+
+        result = {"client": None}
+
+        ttk.Label(
+            dialog,
+            text="Enter your Last.fm API credentials.\n"
+                 "Get them at https://www.last.fm/api/account/create",
+            wraplength=460,
+        ).pack(padx=20, pady=(15, 10))
+
+        fields = {}
+        for label, key in [
+            ("API Key:", "api_key"),
+            ("API Secret:", "api_secret"),
+            ("Session Key:", "session_key"),
+        ]:
+            frame = ttk.Frame(dialog)
+            frame.pack(fill=tk.X, padx=20, pady=3)
+            ttk.Label(frame, text=label, width=14).pack(side=tk.LEFT)
+            var = tk.StringVar()
+            show = "*" if "secret" in key.lower() or "session" in key.lower() else None
+            ttk.Entry(frame, textvariable=var, show=show, width=45).pack(
+                side=tk.LEFT, fill=tk.X, expand=True
             )
+            fields[key] = var
+
+        ttk.Label(
+            dialog,
+            text="Tip: After entering API key + secret, use the\n"
+                 "\"Auth\" button below to get a session key via Last.fm.",
+            wraplength=460,
+            foreground="gray",
+        ).pack(padx=20, pady=(10, 0))
+
+        def _save() -> None:
+            ak = fields["api_key"].get().strip()
+            sec = fields["api_secret"].get().strip()
+            sk = fields["session_key"].get().strip()
+            if not ak or not sec or not sk:
+                messagebox.showwarning(
+                    "Missing Fields", "All three fields are required.",
+                    parent=dialog,
+                )
+                return
+            set_credentials(ak, sec, sk)
+            result["client"] = LastFMClient(ak, sec, session_key=sk)
+            dialog.destroy()
+
+        def _auth_flow() -> None:
+            """Open browser for Last.fm auth, then prompt for token."""
+            ak = fields["api_key"].get().strip()
+            sec = fields["api_secret"].get().strip()
+            if not ak or not sec:
+                messagebox.showwarning(
+                    "Missing", "Enter API Key and API Secret first.", parent=dialog,
+                )
+                return
+
+            import webbrowser
+            url = f"https://www.last.fm/api/auth/?api_key={ak}"
+            webbrowser.open(url)
+
+            # Prompt for token
+            token_dialog = tk.Toplevel(dialog)
+            token_dialog.title("Enter Auth Token")
+            token_dialog.geometry("400x150")
+            token_dialog.transient(dialog)
+            token_dialog.grab_set()
+
+            ttk.Label(
+                token_dialog,
+                text="After granting access in your browser,\n"
+                     "paste the token from the URL here:",
+                wraplength=360,
+            ).pack(padx=20, pady=(15, 10))
+
+            token_var = tk.StringVar()
+            ttk.Entry(token_dialog, textvariable=token_var, width=45).pack(padx=20)
+
+            def _exchange() -> None:
+                token = token_var.get().strip()
+                if not token:
+                    return
+                try:
+                    client = LastFMClient(ak, sec)
+                    resp = client.get_session(token)
+                    sk = resp["session"]["key"]
+                    fields["session_key"].set(sk)
+                    token_dialog.destroy()
+                    messagebox.showinfo(
+                        "Success", "Session key obtained!", parent=dialog,
+                    )
+                except Exception as e:
+                    messagebox.showerror("Error", str(e), parent=token_dialog)
+
+            ttk.Button(
+                token_dialog, text="Exchange Token", command=_exchange,
+            ).pack(pady=10)
+            ttk.Button(
+                token_dialog, text="Cancel", command=token_dialog.destroy,
+            ).pack()
+
+        btn_frame = ttk.Frame(dialog)
+        btn_frame.pack(pady=15)
+        ttk.Button(btn_frame, text="Auth (Get Session Key)", command=_auth_flow).pack(
+            side=tk.LEFT, padx=5,
+        )
+        ttk.Button(btn_frame, text="Save", command=_save).pack(side=tk.LEFT, padx=5)
+        ttk.Button(
+            btn_frame, text="Cancel", command=dialog.destroy,
+        ).pack(side=tk.LEFT, padx=5)
+
+        # Block until dialog closes, then return
+        self.root.wait_window(dialog)
+        if result["client"]:
+            self.status_var.set("Authenticated ✓")
+        return result["client"]
 
     def _make_tree(self, parent: ttk.Frame) -> ttk.Treeview:
         cols = ("artist", "track", "album")
@@ -190,7 +323,8 @@ class ScrobblerGUI:
         if not self.client:
             messagebox.showerror(
                 "No Auth",
-                "Set LASTFM_API_KEY, LASTFM_API_SECRET, and LASTFM_SK env vars.",
+                "Last.fm credentials not configured.\n"
+                "Restart the app to open the setup dialog.",
             )
             return
         if self.scrobble_running:
