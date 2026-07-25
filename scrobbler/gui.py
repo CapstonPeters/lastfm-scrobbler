@@ -273,13 +273,18 @@ class ScrobblerGUI:
                 self.qm.clear_failed()
                 self.qm.clear_success()
                 files = scan_paths([path])
+                total_files = len(files)
                 count = 0
                 for fp in files:
                     meta = extract(fp)
                     self.qm.stage(meta)
                     count += 1
+                    if count % 100 == 0 or count == total_files:
+                        self._invoke(lambda c=count, t=total_files: self.status_var.set(
+                            f"Scanning… {c}/{t} tracks"
+                        ))
                 self._invoke(lambda: self.status_var.set(
-                    f"Scanned {count} tracks from {len(files)} files"
+                    f"Scanned {count} tracks from {total_files} files"
                 ))
             except Exception as e:
                 err = str(e)
@@ -453,11 +458,7 @@ class ScrobblerGUI:
     # ── Helpers ─────────────────────────────────────────────────────────────
 
     def _refresh_tables(self) -> None:
-        for tree, status in [
-            (self.queue_tree, "PENDING"),
-            (self.success_tree, "SUCCESS"),
-            (self.failed_tree, "FAILED"),
-        ]:
+        for tree in [self.queue_tree, self.success_tree, self.failed_tree]:
             for item in tree.get_children():
                 tree.delete(item)
 
@@ -467,7 +468,6 @@ class ScrobblerGUI:
             ):
                 tree = {
                     "PENDING": self.queue_tree,
-                    "SUCCESS": self.success_tree,
                     "FAILED": self.failed_tree,
                 }.get(row["status"])
                 if tree:
@@ -475,6 +475,13 @@ class ScrobblerGUI:
                         "", tk.END,
                         values=(row["artist"], row["track"], row["album"]),
                     )
+
+        # Show in-memory success list
+        for artist, track, album in self._success_tracks:
+            self.success_tree.insert(
+                "", tk.END,
+                values=(artist, track, album),
+            )
 
     def _invoke(self, fn) -> None:
         """Thread-safe UI update."""
