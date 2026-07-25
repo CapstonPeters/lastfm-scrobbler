@@ -92,6 +92,10 @@ class ScrobblerGUI:
         self.retry_btn.pack(side=tk.LEFT, padx=2)
 
         ttk.Button(
+            bottom, text="Clear All", command=self._clear
+        ).pack(side=tk.LEFT, padx=2)
+
+        ttk.Button(
             bottom, text="⚙ Settings", command=self._show_setup
         ).pack(side=tk.LEFT, padx=2)
 
@@ -389,6 +393,16 @@ class ScrobblerGUI:
         else:
             self.status_var.set("No failed tracks to retry.")
         self._refresh_tables()
+
+    def _clear(self) -> None:
+        ok = messagebox.askyesno(
+            "Clear All Tracks",
+            "Remove ALL tracks (pending, success, and failed)?",
+        )
+        if ok:
+            self.qm.clear_all()
+            self.status_var.set("All tracks cleared.")
+            self._refresh_tables()
 
     # ── Helpers ─────────────────────────────────────────────────────────────
 
